@@ -466,4 +466,384 @@
       "Армейский жим стоя",
       "Махи гантелями в стороны",
       "Подъем штанги на бицепс",
-      "Фран
+      "Французский жим",
+      "Сгибания ног в тренажере",
+      "Разгибания ног в тренажере",
+      "Гиперэкстензия",
+      "Скручивания на пресс"
+    ];
+
+    // База данных: объект вида { "2026-10-30": [ { name, note, sets: [...] } ] }
+    let db = JSON.parse(localStorage.getItem('fs_diary_db')) || {};
+    let exercises = JSON.parse(localStorage.getItem('fs_exercises')) || DEFAULT_EXERCISES;
+    let selectedDate = getTodayDate();
+    let chartInstance = null;
+
+    function getTodayDate() {
+      const d = new Date();
+      return d.toISOString().split('T')[0];
+    }
+
+    function init() {
+      document.getElementById('selected-date').value = selectedDate;
+      renderSelects();
+      renderDayWorkout();
+    }
+
+    function renderSelects() {
+      const modalSel = document.getElementById('modal-select-exercise');
+      const progSel = document.getElementById('progress-select');
+      modalSel.innerHTML = '';
+      progSel.innerHTML = '';
+
+      exercises.sort().forEach(ex => {
+        modalSel.innerHTML += `<option value="${ex}">${ex}</option>`;
+        progSel.innerHTML += `<option value="${ex}">${ex}</option>`;
+      });
+    }
+
+    // Навигация по датам
+    function changeDateByDays(delta) {
+      const parts = selectedDate.split('-');
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      d.setDate(d.getDate() + delta);
+      selectedDate = d.toISOString().split('T')[0];
+      document.getElementById('selected-date').value = selectedDate;
+      renderDayWorkout();
+    }
+
+    function onDateChanged() {
+      selectedDate = document.getElementById('selected-date').value;
+      renderDayWorkout();
+    }
+
+    // Вкладки
+    function switchTab(tabId, title) {
+      document.querySelectorAll('.tab-view').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-item').forEach(el => el.classList.remove('active'));
+
+      document.getElementById('tab-' + tabId).classList.add('active');
+      document.getElementById('view-title').innerText = title;
+      event.currentTarget.classList.add('active');
+
+      const dateNav = document.getElementById('date-navigator');
+      if (tabId === 'workout') {
+        dateNav.style.display = 'flex';
+        renderDayWorkout();
+      } else {
+        dateNav.style.display = 'none';
+      }
+
+      if (tabId === 'history') renderHistoryTab();
+      if (tabId === 'progress') renderProgressChart();
+    }
+
+    // Отрисовка упражнений на выбранный день
+    function renderDayWorkout() {
+      const cont = document.getElementById('exercise-list');
+      cont.innerHTML = '';
+      const dayList = db[selectedDate] || [];
+
+      if (!dayList.length) {
+        cont.innerHTML = `
+          <div class="card" style="text-align: center; padding: 28px 16px; color: var(--text-muted);">
+            <div style="font-size: 34px; margin-bottom: 8px;">📋</div>
+            <div style="font-weight: 700; color: #fff; margin-bottom: 4px;">Нет записей на этот день</div>
+            <div style="font-size: 13px;">Нажмите кнопку ниже, чтобы добавить упражнения на ${formatDate(selectedDate)}.</div>
+          </div>
+        `;
+        return;
+      }
+
+      dayList.forEach((ex, exIdx) => {
+        let setsHtml = '';
+        ex.sets.forEach((set, setIdx) => {
+          setsHtml += `
+            <div class="set-row">
+              <span style="font-weight: 700; color: var(--text-muted); text-align: center;">${setIdx + 1}</span>
+              <input type="number" step="0.5" inputmode="decimal" class="input-num" placeholder="кг" value="${set.weight}" 
+                     oninput="updateSet(${exIdx}, ${setIdx}, 'weight', this.value)">
+              <input type="number" inputmode="numeric" class="input-num" placeholder="раз" value="${set.reps}" 
+                     oninput="updateSet(${exIdx}, ${setIdx}, 'reps', this.value)">
+              <div class="check-btn ${set.done ? 'done' : ''}" onclick="toggleSetDone(${exIdx}, ${setIdx})">
+                ✓
+              </div>
+              <button class="del-btn" onclick="removeSet(${exIdx}, ${setIdx})">×</button>
+            </div>
+          `;
+        });
+
+        cont.innerHTML += `
+          <div class="exercise-block">
+            <div class="ex-header">
+              <span class="ex-name">${ex.name}</span>
+              <button class="del-btn" onclick="removeExercise(${exIdx})" style="font-size:13px; color: var(--accent);">Удалить</button>
+            </div>
+
+            <!-- Поле заметки к упражнению -->
+            <input type="text" class="note-input" placeholder="Заметка к упражнению (ощущения, вес на след. раз...)" 
+                   value="${ex.note || ''}" onchange="updateExerciseNote(${exIdx}, this.value)">
+
+            <div class="set-row set-head">
+              <span>Сет</span><span>Вес (кг)</span><span>Повт</span><span>Статус</span><span></span>
+            </div>
+            ${setsHtml}
+            <button class="btn btn-secondary btn-sm" style="margin-top: 10px; width: 100%;" onclick="addSet(${exIdx})">
+              + Добавить подход
+            </button>
+          </div>
+        `;
+      });
+    }
+
+    function openExerciseModal() {
+      document.getElementById('exercise-modal').showModal();
+    }
+
+    function confirmAddExercise() {
+      const name = document.getElementById('modal-select-exercise').value;
+      if (!db[selectedDate]) db[selectedDate] = [];
+
+      db[selectedDate].push({
+        name: name,
+        note: '',
+        sets: [{ weight: '', reps: '', done: true }]
+      });
+
+      saveDB();
+      document.getElementById('exercise-modal').close();
+      renderDayWorkout();
+    }
+
+    function updateExerciseNote(exIdx, noteText) {
+      db[selectedDate][exIdx].note = noteText;
+      saveDB();
+    }
+
+    function addSet(exIdx) {
+      const currentSets = db[selectedDate][exIdx].sets;
+      const lastSet = currentSets[currentSets.length - 1] || { weight: '', reps: '' };
+      currentSets.push({
+        weight: lastSet.weight,
+        reps: lastSet.reps,
+        done: true
+      });
+      saveDB();
+      renderDayWorkout();
+    }
+
+    function removeSet(exIdx, setIdx) {
+      db[selectedDate][exIdx].sets.splice(setIdx, 1);
+      saveDB();
+      renderDayWorkout();
+    }
+
+    function removeExercise(exIdx) {
+      db[selectedDate].splice(exIdx, 1);
+      if (db[selectedDate].length === 0) delete db[selectedDate];
+      saveDB();
+      renderDayWorkout();
+    }
+
+    function toggleSetDone(exIdx, setIdx) {
+      const s = db[selectedDate][exIdx].sets[setIdx];
+      s.done = !s.done;
+      saveDB();
+      renderDayWorkout();
+    }
+
+    function updateSet(exIdx, setIdx, field, val) {
+      db[selectedDate][exIdx].sets[setIdx][field] = val;
+      saveDB();
+    }
+
+    function clearDayWorkout() {
+      if (confirm('Точно удалить все упражнения за этот день?')) {
+        delete db[selectedDate];
+        saveDB();
+        renderDayWorkout();
+      }
+    }
+
+    function saveDB() {
+      localStorage.setItem('fs_diary_db', JSON.stringify(db));
+      const tag = document.getElementById('save-tag');
+      tag.style.opacity = '1';
+      setTimeout(() => { tag.style.opacity = '0.7'; }, 1000);
+    }
+
+    // Вкладка Истории
+    function renderHistoryTab() {
+      const cont = document.getElementById('history-container');
+      cont.innerHTML = '';
+      const dates = Object.keys(db).sort().reverse();
+
+      if (!dates.length) {
+        cont.innerHTML = '<div class="card" style="text-align:center; color: var(--text-muted);">История пока пуста</div>';
+        return;
+      }
+
+      dates.forEach(d => {
+        const exercisesInDay = db[d];
+        let summary = exercisesInDay.map(e => e.name).join(' • ');
+
+        cont.innerHTML += `
+          <div class="card history-card" onclick="goToDate('${d}')">
+            <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 6px;">
+              <span style="font-weight:700; font-size:16px;">${formatDate(d)}</span>
+              <span style="font-size:12px; color: var(--accent); font-weight:600;">Открыть →</span>
+            </div>
+            <div style="font-size:13px; color: var(--text-muted); line-height: 1.4;">${summary}</div>
+          </div>
+        `;
+      });
+    }
+
+    function goToDate(d) {
+      selectedDate = d;
+      document.getElementById('selected-date').value = d;
+      switchTab('workout', 'Дневник');
+    }
+
+    // Аналитика и Прогресс
+    function renderProgressChart() {
+      const selectedEx = document.getElementById('progress-select').value;
+      const historyPoints = [];
+      const notesList = [];
+      let maxWeight = 0;
+      let totalSets = 0;
+
+      const sortedDates = Object.keys(db).sort();
+
+      sortedDates.forEach(d => {
+        const exItem = (db[d] || []).find(e => e.name === selectedEx);
+        if (exItem) {
+          let dayMax = 0;
+          exItem.sets.forEach(s => {
+            totalSets++;
+            const w = parseFloat(s.weight) || 0;
+            if (w > dayMax) dayMax = w;
+            if (w > maxWeight) maxWeight = w;
+          });
+
+          if (dayMax > 0) {
+            historyPoints.push({
+              date: formatDateShort(d),
+              weight: dayMax
+            });
+          }
+
+          if (exItem.note && exItem.note.trim()) {
+            notesList.push({ date: formatDate(d), note: exItem.note.trim() });
+          }
+        }
+      });
+
+      document.getElementById('stat-max-weight').innerText = `${maxWeight} кг`;
+      document.getElementById('stat-total-sets').innerText = totalSets;
+
+      // Отрисовка заметок
+      const notesCont = document.getElementById('exercise-notes-history');
+      if (notesList.length) {
+        notesCont.innerHTML = notesList.reverse().map(n => `
+          <div style="margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border);">
+            <div style="font-size: 11px; color: var(--accent); font-weight: 700;">${n.date}</div>
+            <div style="color: #fff; margin-top: 2px;">${n.note}</div>
+          </div>
+        `).join('');
+      } else {
+        notesCont.innerHTML = '<span style="color: var(--text-muted);">Заметок пока нет</span>';
+      }
+
+      // График
+      const ctx = document.getElementById('progressChart').getContext('2d');
+      if (chartInstance) chartInstance.destroy();
+
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: historyPoints.map(p => p.date),
+          datasets: [{
+            data: historyPoints.map(p => p.weight),
+            borderColor: '#ff4757',
+            backgroundColor: 'rgba(255, 71, 87, 0.12)',
+            fill: true,
+            tension: 0.35,
+            borderWidth: 3,
+            pointRadius: 5,
+            pointBackgroundColor: '#ff4757'
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: '#282c3a' }, ticks: { color: '#8e95a5' } },
+            y: { grid: { color: '#282c3a' }, ticks: { color: '#8e95a5' } }
+          }
+        }
+      });
+    }
+
+    function addCustomExercise() {
+      const input = document.getElementById('custom-ex-name');
+      const val = input.value.trim();
+      if (!val) return;
+      if (!exercises.includes(val)) {
+        exercises.push(val);
+        localStorage.setItem('fs_exercises', JSON.stringify(exercises));
+        renderSelects();
+        input.value = '';
+        alert('Упражнение сохранено в базу!');
+      }
+    }
+
+    function formatDate(dStr) {
+      if (!dStr) return '';
+      const parts = dStr.split('-');
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
+    function formatDateShort(dStr) {
+      const parts = dStr.split('-');
+      return `${parts[2]}.${parts[1]}`;
+    }
+
+    // Экспорт / Импорт
+    function exportData() {
+      const data = { exercises, db };
+      const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `workouts_diary_${getTodayDate()}.json`;
+      a.click();
+    }
+
+    function importData(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          const imported = JSON.parse(evt.target.result);
+          if (imported.db) {
+            db = imported.db;
+            exercises = imported.exercises || exercises;
+            localStorage.setItem('fs_diary_db', JSON.stringify(db));
+            localStorage.setItem('fs_exercises', JSON.stringify(exercises));
+            renderSelects();
+            renderDayWorkout();
+            alert('Данные успешно загружены!');
+          }
+        } catch (err) {
+          alert('Ошибка при импорте файла');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    init();
+  </script>
+</body>
+</html>
