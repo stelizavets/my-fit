@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Мои Тренировки</title>
+
+  <!-- PWA настройки для iOS -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Тренировки">
+  <meta name="theme-color" content="#0a0a0c">
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2964/2964514.png">
+
+  <!-- Chart.js для графиков прогресса -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root {
+      --bg: #0b0c10;
+      --card-bg: #16181f;
+      --card-sub: #20232d;
+      --accent: #ff4757;
+      --accent-green: #2ed573;
+      --accent-blue: #3742fa;
+      --text: #f1f2f6;
+      --text-muted: #8890a0;
+      --border: #272b38;
+      --radius: 16px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding-top: env(safe-area-inset-top, 20px);
+      padding-bottom: calc(env(safe-area-inset-bottom, 20px) + 75px);
+      user-select: none;
+    }
+
+    /* Верхняя шапка */
+    header {
+      padding: 16px 20px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    header h1 {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    /* Контейнер вкладок */
+    main {
+      flex: 1;
+      padding: 0 16px;
+      overflow-y: auto;
+    }
+
+    .tab-view {
+      display: none;
+    }
+
+    .tab-view.active {
+      display: block;
+      animation: fadeIn 0.2s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Карточки */
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 14px;
+      border: 1px solid var(--border);
+    }
+
+    /* Кнопки */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 18px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      width: 100%;
+      transition: opacity 0.15s;
+    }
+
+    .btn:active {
+      opacity: 0.8;
+    }
+
+    .btn-secondary {
+      background: var(--card-sub);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-green {
+      background: var(--accent-green);
+      color: #0b0c10;
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 13px;
+      border-radius: 8px;
+      width: auto;
+    }
+
+    /* Таблица подходов */
+    .exercise-block {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+
+    .ex-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .ex-name {
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .set-row {
+      display: grid;
+      grid-template-columns: 35px 1fr 1fr 40px 30px;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .set-head {
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .input-num {
+      background: var(--card-sub);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      text-align: center;
+      padding: 8px 4px;
+      width: 100%;
+      outline: none;
+    }
+
+    .input-num:focus {
+      border-color: var(--accent);
+    }
+
+    .check-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: var(--card-sub);
+      border: 1px solid var(--border);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .check-btn.done {
+      background: var(--accent-green);
+      color: #000;
+      border-color: var(--accent-green);
+    }
+
+    .del-btn {
+      color: var(--text-muted);
+      background: none;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    /* Навигация внизу (iOS Tab Bar) */
+    .tab-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: calc(56px + env(safe-area-inset-bottom, 20px));
+      padding-bottom: env(safe-area-inset-bottom, 20px);
+      background: rgba(22, 24, 31, 0.95);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      z-index: 100;
+    }
+
+    .tab-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .tab-item.active {
+      color: var(--accent);
+    }
+
+    .tab-icon {
+      font-size: 20px;
+      margin-bottom: 2px;
+    }
+
+    /* Селекты и фильтры */
+    select {
+      background: var(--card-sub);
+      color: #fff;
+      border: 1px solid var(--border);
+      padding: 10px 14px;
+      border-radius: 12px;
+      width: 100%;
+      font-size: 15px;
+      outline: none;
+      margin-bottom: 12px;
+    }
+
+    .stat-badge {
+      display: inline-block;
+      background: rgba(255, 71, 87, 0.15);
+      color: var(--accent);
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1 id="view-title">Тренировка</h1>
+    <div id="workout-timer" style="font-weight: 700; color: var(--accent-green); display: none;">00:00</div>
+  </header>
+
+  <main>
+    <!-- Вкладка 1: Текущая тренировка -->
+    <section id="tab-workout" class="tab-view active">
+      <div id="workout-idle">
+        <div class="card" style="text-align: center; padding: 32px 16px;">
+          <div style="font-size: 48px; margin-bottom: 12px;">🏋️‍♂️</div>
+          <h2 style="margin-bottom: 8px;">Готовы к тренировке?</h2>
+          <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
+            Фиксируйте подходы, вес и повторения без лишних нажатий.
+          </p>
+          <button class="btn" onclick="startWorkout()">Начать тренировку</button>
+        </div>
+      </div>
+
+      <div id="workout-active" style="display: none;">
+        <div id="exercise-list"></div>
+
+        <button class="btn btn-secondary" onclick="openExerciseModal()" style="margin-bottom: 10px;">
+          + Добавить упражнение
+        </button>
+        <button class="btn btn-green" onclick="finishWorkout()">
+          Завершить тренировку
+        </button>
+      </div>
+    </section>
+
+    <!-- Вкладка 2: Прогресс и Аналитика -->
+    <section id="tab-progress" class="tab-view">
+      <div class="card">
+        <label style="font-size: 13px; color: var(--text-muted); margin-bottom: 6px; display: block;">Выберите упражнение:</label>
+        <select id="progress-select" onchange="renderProgressChart()"></select>
+
+        <div style="display: flex; gap: 10px; margin-top: 6px;">
+          <div style="flex: 1; background: var(--card-sub); padding: 12px; border-radius: 12px; text-align: center;">
+            <div style="font-size: 12px; color: var(--text-muted);">Рекорд (1RM / Макс)</div>
+            <div id="stat-max-weight" style="font-size: 22px; font-weight: 800; color: var(--accent); margin-top: 4px;">0 кг</div>
+          </div>
+          <div style="flex: 1; background: var(--card-sub); padding: 12px; border-radius: 12px; text-align: center;">
+            <div style="font-size: 12px; color: var(--text-muted);">Всего подходов</div>
+            <div id="stat-total-sets" style="font-size: 22px; font-weight: 800; color: var(--accent-green); margin-top: 4px;">0</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="font-size: 15px; margin-bottom: 12px;">График максимального веса</h3>
+        <canvas id="progressChart" height="220"></canvas>
+      </div>
+    </section>
+
+    <!-- Вкладка 3: История -->
+    <section id="tab-history" class="tab-view">
+      <div id="history-list"></div>
+    </section>
+
+    <!-- Вкладка 4: Настройки / База упражнений -->
+    <section id="tab-settings" class="tab-view">
+      <div class="card">
+        <h3 style="font-size: 16px; margin-bottom: 10px;">Добавить новое упражнение</h3>
+        <input type="text" id="custom-ex-name" class="input-num" style="text-align: left; padding: 10px; margin-bottom: 10px;" placeholder="Название упражнения...">
+        <button class="btn btn-secondary" onclick="addCustomExercise()">Сохранить упражнение</button>
+      </div>
+
+      <div class="card">
+        <h3 style="font-size: 16px; margin-bottom: 10px;">Данные</h3>
+        <button class="btn btn-secondary" style="margin-bottom: 8px;" onclick="exportData()">Экспорт резервной копии (JSON)</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('import-file').click()">Импорт из файла</button>
+        <input type="file" id="import-file" style="display: none;" onchange="importData(event)">
+      </div>
+    </section>
+  </main>
+
+  <!-- Нижний бар навигации -->
+  <nav class="tab-bar">
+    <div class="tab-item active" onclick="switchTab('workout', 'Тренировка')">
+      <span class="tab-icon">⚡</span>
+      <span>Тренировка</span>
+    </div>
+    <div class="tab-item" onclick="switchTab('progress', 'Прогресс')">
+      <span class="tab-icon">📈</span>
+      <span>Прогресс</span>
+    </div>
+    <div class="tab-item" onclick="switchTab('history', 'История')">
+      <span class="tab-icon">📅</span>
+      <span>История</span>
+    </div>
+    <div class="tab-item" onclick="switchTab('settings', 'Настройки')">
+      <span class="tab-icon">⚙️</span>
+      <span>Еще</span>
+    </div>
+  </nav>
+
+  <!-- Диалог добавления упражнения -->
+  <dialog id="exercise-modal" style="background: var(--card-bg); color: var(--text); border: 1px solid var(--border); border-radius: 20px; padding: 20px; width: 90%; max-width: 400px; margin: auto;">
+    <h3 style="margin-bottom: 12px;">Выберите упражнение</h3>
+    <select id="modal-select-exercise"></select>
+    <div style="display: flex; gap: 8px; margin-top: 14px;">
+      <button class="btn btn-secondary" onclick="document.getElementById('exercise-modal').close()">Отмена</button>
+      <button class="btn" onclick="confirmAddExercise()">Добавить</button>
+    </div>
+  </dialog>
+
+  <script>
+    // Базовая база упражнений
+    const DEFAULT_EXERCISES = [
+      "Жим штанги лежа",
+      "Жим гантелей под углом",
+      "Приседания со штангой",
+      "Становая тяга",
+      "Тяга верхнего блока к груди",
+      "Тяга штанги в наклоне",
+      "Армейский жим стоя",
+      "Махи гантелями в стороны",
+      "Подъем штанги на бицепс",
+      "Французский жим",
+      "Скручивания на пресс"
+    ];
+
+    let exercises = JSON.parse(localStorage.getItem('fs_exercises')) || DEFAULT_EXERCISES;
+    let workouts = JSON.parse(localStorage.getItem('fs_workouts')) || [];
+    let currentWorkout = null;
+    let timerInterval = null;
+    let chartInstance = null;
+
+    // Инициализация
+    function init() {
+      renderSelects();
+    }
+
+    function renderSelects() {
+      const modalSel = document.getElementById('modal-select-exercise');
+      const progSel = document.getElementById('progress-select');
+      modalSel.innerHTML = '';
+      progSel.innerHTML = '';
+
+      exercises.sort().forEach(ex => {
+        modalSel.innerHTML += `<option value="${ex}">${ex}</option>`;
+        progSel.innerHTML += `<option value="${ex}">${ex}</option>`;
+      });
+    }
+
+    // Навигация
+    function switchTab(tabId, title) {
+      document.querySelectorAll('.tab-view').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-item').forEach(el => el.classList.remove('active'));
+
+      document.getElementById('tab-' + tabId).classList.add('active');
+      document.getElementById('view-title').innerText = title;
+      event.currentTarget.classList.add('active');
+
+      if (tabId === 'history') renderHistory();
+      if (tabId === 'progress') renderProgressChart();
+    }
+
+    // Логика тренировки
+    function startWorkout() {
+      currentWorkout = {
+        startTime: new Date().getTime(),
+        exercises: []
+      };
+      document.getElementById('workout-idle').style.display = 'none';
+      document.getElementById('workout-active').style.display = 'block';
+      document.getElementById('workout-timer').style.display = 'block';
+      startTimer();
+      renderActiveWorkout();
+    }
+
+    function startTimer() {
+      const timerEl = document.getElementById('workout-timer');
+      const start = currentWorkout.startTime;
+      timerInterval = setInterval(() => {
+        const sec = Math.floor((new Date().getTime() - start) / 1000);
+        const m = String(Math.floor(sec / 60)).padStart(2, '0');
+        const s = String(sec % 60).padStart(2, '0');
+        timerEl.innerText = `${m}:${s}`;
+      }, 1000);
+    }
+
+    function openExerciseModal() {
+      document.getElementById('exercise-modal').showModal();
+    }
+
+    function confirmAddExercise() {
+      const name = document.getElementById('modal-select-exercise').value;
+      currentWorkout.exercises.push({
+        name: name,
+        sets: [{ weight: '', reps: '', done: false }]
+      });
+      document.getElementById('exercise-modal').close();
+      renderActiveWorkout();
+    }
+
+    function addSet(exIdx) {
+      const lastSet = currentWorkout.exercises[exIdx].sets.slice(-1)[0] || { weight: '', reps: '' };
+      currentWorkout.exercises[exIdx].sets.push({
+        weight: lastSet.weight,
+        reps: lastSet.reps,
+        done: false
+      });
+      renderActiveWorkout();
+    }
+
+    function removeSet(exIdx, setIdx) {
+      currentWorkout.exercises[exIdx].sets.splice(setIdx, 1);
+      renderActiveWorkout();
+    }
+
+    function removeExercise(exIdx) {
+      currentWorkout.exercises.splice(exIdx, 1);
+      renderActiveWorkout();
+    }
+
+    function toggleSetDone(exIdx, setIdx) {
+      currentWorkout.exercises[exIdx].sets[setIdx].done = !currentWorkout.exercises[exIdx].sets[setIdx].done;
+      renderActiveWorkout();
+    }
+
+    function updateSet(exIdx, setIdx, field, val) {
+      currentWorkout.exercises[exIdx].sets[setIdx][field] = val;
+    }
+
+    function renderActiveWorkout() {
+      const cont = document.getElementById('exercise-list');
+      cont.innerHTML = '';
+
+      currentWorkout.exercises.forEach((ex, exIdx) => {
+        let setsHtml = '';
+        ex.sets.forEach((set, setIdx) => {
+          setsHtml += `
+            <div class="set-row">
+              <span style="font-weight: 700; color: var(--text-muted); text-align: center;">${setIdx + 1}</span>
+              <input type="number" step="0.5" class="input-num" placeholder="кг" value="${set.weight}" 
+                     onchange="updateSet(${exIdx}, ${setIdx}, 'weight', this.value)">
+              <input type="number" class="input-num" placeholder="повт" value="${set.reps}" 
+                     onchange="updateSet(${exIdx}, ${setIdx}, 'reps', this.value)">
+              <div class="check-btn ${set.done ? 'done' : ''}" onclick="toggleSetDone(${exIdx}, ${setIdx})">
+                ✓
+              </div>
+              <button class="del-btn" onclick="removeSet(${exIdx}, ${setIdx})">×</button>
+            </div>
+          `;
+        });
+
+        cont.innerHTML += `
+          <div class="exercise-block">
+            <div class="ex-header">
+              <span class="ex-name">${ex.name}</span>
+              <button class="del-btn" onclick="removeExercise(${exIdx})" style="font-size:14px; color: var(--accent);">Удалить</button>
+            </div>
+            <div class="set-row set-head">
+              <span>Сет</span><span>Вес (кг)</span><span>Повт</span><span>Статус</span><span></span>
+            </div>
+            ${setsHtml}
+            <button class="btn btn-secondary btn-sm" style="margin-top: 10px; width: 100%;" onclick="addSet(${exIdx})">
+              + Добавить подход
+            </button>
+          </div>
+        `;
+      });
+    }
+
+    function finishWorkout() {
+      if (!currentWorkout.exercises.length) {
+        if (!confirm('Тренировка пуста. Завершить?')) return;
+      }
+      clearInterval(timerInterval);
+      currentWorkout.endTime = new Date().getTime();
+      workouts.unshift(currentWorkout);
+      localStorage.setItem('fs_workouts', JSON.stringify(workouts));
+
+      currentWorkout = null;
+      document.getElementById('workout-timer').style.display = 'none';
+      document.getElementById('workout-active').style.display = 'none';
+      document.getElementById('workout-idle').style.display = 'block';
+      alert('Тренировка сохранена!');
+    }
+
+    // История
+    function renderHistory() {
+      const cont = document.getElementById('history-list');
+      cont.innerHTML = '';
+
+      if (!workouts.length) {
+        cont.innerHTML = '<div class="card" style="text-align:center; color: var(--text-muted);">Пока нет завершенных тренировок</div>';
+        return;
+      }
+
+      workouts.forEach((w, idx) => {
+        const date = new Date(w.startTime).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+        const durationMin = Math.round(((w.endTime || w.startTime) - w.startTime) / 60000);
+
+        let details = '';
+        w.exercises.forEach(ex => {
+          const setsStr = ex.sets.map(s => `${s.weight || 0}кг×${s.reps || 0}`).join(', ');
+          details += `<div style="font-size: 13px; margin-bottom: 4px;"><b>${ex.name}:</b> ${setsStr}</div>`;
+        });
+
+        cont.innerHTML += `
+          <div class="card">
+            <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span style="font-weight: 700; font-size: 16px;">${date}</span>
+              <span class="stat-badge">${durationMin} мин</span>
+            </div>
+            <div style="margin-top: 8px; color: var(--text-muted);">${details}</div>
+          </div>
+        `;
+      });
+    }
+
+    // График прогресса
+    function renderProgressChart() {
+      const selected = document.getElementById('progress-select').value;
+      const historyPoints = [];
+      let maxWeight = 0;
+      let totalSets = 0;
+
+      // Сканируем тренировки с конца к началу (хронологически)
+      [...workouts].reverse().forEach(w => {
+        const ex = w.exercises.find(e => e.name === selected);
+        if (ex) {
+          let dayMax = 0;
+          ex.sets.forEach(s => {
+            totalSets++;
+            const wVal = parseFloat(s.weight) || 0;
+            if (wVal > dayMax) dayMax = wVal;
+            if (wVal > maxWeight) maxWeight = wVal;
+          });
+          if (dayMax > 0) {
+            historyPoints.push({
+              date: new Date(w.startTime).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
+              weight: dayMax
+            });
+          }
+        }
+      });
+
+      document.getElementById('stat-max-weight').innerText = `${maxWeight} кг`;
+      document.getElementById('stat-total-sets').innerText = totalSets;
+
+      const ctx = document.getElementById('progressChart').getContext('2d');
+      if (chartInstance) chartInstance.destroy();
+
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: historyPoints.map(p => p.date),
+          datasets: [{
+            label: 'Макс вес (кг)',
+            data: historyPoints.map(p => p.weight),
+            borderColor: '#ff4757',
+            backgroundColor: 'rgba(255, 71, 87, 0.1)',
+            fill: true,
+            tension: 0.3,
+            borderWidth: 3,
+            pointRadius: 5,
+            pointBackgroundColor: '#ff4757'
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: '#272b38' }, ticks: { color: '#8890a0' } },
+            y: { grid: { color: '#272b38' }, ticks: { color: '#8890a0' } }
+          }
+        }
+      });
+    }
+
+    function addCustomExercise() {
+      const input = document.getElementById('custom-ex-name');
+      const val = input.value.trim();
+      if (!val) return;
+      if (!exercises.includes(val)) {
+        exercises.push(val);
+        localStorage.setItem('fs_exercises', JSON.stringify(exercises));
+        renderSelects();
+        input.value = '';
+        alert('Упражнение добавлено!');
+      }
+    }
+
+    // Резервная копия
+    function exportData() {
+      const data = { exercises, workouts };
+      const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `workouts_backup_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+    }
+
+    function importData(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          const imported = JSON.parse(evt.target.result);
+          if (imported.workouts) {
+            workouts = imported.workouts;
+            exercises = imported.exercises || exercises;
+            localStorage.setItem('fs_workouts', JSON.stringify(workouts));
+            localStorage.setItem('fs_exercises', JSON.stringify(exercises));
+            renderSelects();
+            alert('Данные успешно импортированы!');
+          }
+        } catch (err) {
+          alert('Ошибка при чтении файла');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    init();
+  </script>
+</body>
+</html>
